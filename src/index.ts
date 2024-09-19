@@ -60,35 +60,35 @@ const classifyByNetwork = (data: Coin[]) => {
 export const saveHolderDataToDB = async (holderDataBatch: HolderData[]) => {
   try {
     const pool = await connectWithConnector();
-    console.log("Connected to the database successfully.");
+    console.log("Connected to the PostgreSQL database successfully.");
 
-    const connection = await pool.getConnection();
+    const client = await pool.connect();
     console.log("Obtained connection from pool.");
 
     try {
-      await connection.beginTransaction(); // Start the transaction
+      await client.query("BEGIN"); // Start the transaction
 
       // Loop through holderDataBatch and insert data into the database
       for (const holderData of holderDataBatch) {
         const { tokenAddress, date, holderCount } = holderData;
 
         // Insert holder data into the 'holders' table
-        await connection.query(
-          `INSERT INTO holders (tokenAddress, date, holder) VALUES (?, ?, ?)`,
+        await client.query(
+          `INSERT INTO holders (tokenAddress, date, holder) VALUES ($1, $2, $3)`,
           [tokenAddress, date, holderCount]
         );
       }
 
-      await connection.commit(); // Commit the transaction
+      await client.query("COMMIT"); // Commit the transaction
       console.log("Data saved successfully.");
     } catch (err) {
-      await connection.rollback(); // Rollback the transaction in case of error
+      await client.query("ROLLBACK"); // Rollback the transaction in case of error
       console.error("Error saving data, transaction rolled back:", err);
     } finally {
-      connection.release(); // Always release the connection back to the pool
+      client.release(); // Always release the connection back to the pool
     }
   } catch (err) {
-    console.error("Error connecting to the database:", err);
+    console.error("Error connecting to the PostgreSQL database:", err);
   }
 };
 

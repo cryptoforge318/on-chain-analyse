@@ -1,6 +1,6 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import mysql, { Pool, PoolOptions } from "mysql2/promise";
+import { Pool } from "pg"; // Import pg Pool
 import { Connector, IpAddressTypes } from "@google-cloud/cloud-sql-connector";
 import { GoogleAuth } from "google-auth-library";
 import * as fs from "fs";
@@ -8,17 +8,13 @@ import * as path from "path";
 
 dotenv.config();
 
-interface DBConfig extends PoolOptions {
+interface DBConfig {
   user: string;
   password: string;
   database: string;
+  host: string;
+  port: number;
 }
-
-// Function to read credentials from a JSON file
-const getCredentialsFromFile = (filePath: string) => {
-  const fullPath = path.resolve(filePath);
-  return JSON.parse(fs.readFileSync(fullPath, "utf8"));
-};
 
 export const connectWithConnector = async (
   config?: DBConfig,
@@ -47,22 +43,24 @@ export const connectWithConnector = async (
   // Authenticate the client
   await auth.getClient();
 
-  // Get the Cloud SQL connection options
+  // Get the Cloud SQL connection options for PostgreSQL
   const clientOpts = await connector.getOptions({
     instanceConnectionName, // Your instance connection name
     ipType: IpAddressTypes.PUBLIC, // Use Public IP for the connection
   });
 
-  // Prepare the database configuration
+  // Prepare the database configuration for PostgreSQL
   const dbConfig: DBConfig = {
-    ...clientOpts,
     user: process.env.DB_USER as string, // Your DB user
     password: process.env.DB_PASS as string, // Your DB password
     database: process.env.DB_NAME as string, // Your DB name
+    host: "34.29.242.105", // Use the host provided by the Cloud SQL connector
+    port: 5432, // PostgreSQL default port
   };
 
-  // Establish a connection to the database using a connection pool
-  return mysql.createPool(dbConfig);
+  // Establish a connection to the PostgreSQL database using a connection pool
+  const pool = new Pool(dbConfig);
+  return pool;
 };
 
 export const networkName = (): { [key: string]: string } => {
