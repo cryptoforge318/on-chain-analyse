@@ -1,6 +1,13 @@
 import express from "express";
 import dotenv from "dotenv";
-import { fetchTokenHolders, getFormattedDate, fetchCoinData } from "./utils";
+
+import {
+  fetchTokenHolders,
+  getFormattedDate,
+  fetchCoinData,
+  networkName,
+  connectWithConnector,
+} from "./utils";
 import { Client } from "pg";
 
 dotenv.config();
@@ -12,42 +19,94 @@ interface Coin {
   platforms: { [key: string]: string };
 }
 
+interface HolderData {
+  tokenAddress: string;
+  date: string; // Assuming date is a string formatted as 'YYYY-MM-DD'
+  holderCount: number;
+}
+
 let coinData: Coin[] = [];
 
-const getContractAddress = (platforms: { [key: string]: string }): string | undefined => {
-  const firstKey = Object.keys(platforms)[0];
-  return firstKey ? platforms[firstKey] : undefined;
+const getContractAddress = (platforms: {
+  [key: string]: string;
+}): [string, string] | undefined => {
+  const networkMap = networkName();
+
+  for (const platform in platforms) {
+    if (networkMap[platform]) {
+      return [networkMap[platform], platforms[platform]];
+    }
+  }
+
+  return undefined;
 };
 
-const saveHolderDataToDB = async (holderDataBatch: any[]) => {
-  const client = new Client({
-    user: process.env.PG_USER,
-    host: process.env.PG_HOST,
-    database: process.env.PG_DATABASE,
-    password: process.env.PG_PASSWORD,
-    port: Number(process.env.PG_PORT) || 5432,
+const classifyByNetwork = (data: Coin[]) => {
+  const result: { [key: string]: Coin[] } = {};
+
+  data.forEach((coin) => {
+    const platforms = coin.platforms;
+    Object.keys(platforms).forEach((network) => {
+      if (!result[network]) {
+        result[network] = [];
+      }
+      result[network].push(coin);
+    });
   });
 
+  return result;
+};
+
+export const saveHolderDataToDB = async (holderDataBatch: HolderData[]) => {
   try {
-    await client.connect();
-    const query = `INSERT INTO token_holders (token_address, date, holder_count) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`;
-    for (const data of holderDataBatch) {
-      await client.query(query, [data.tokenAddress, data.date, data.holderCount]);
+    const pool = await connectWithConnector();
+    console.log("Connected to the database successfully.");
+
+    const connection = await pool.getConnection();
+    console.log("Obtained connection from pool.");
+
+    try {
+      await connection.beginTransaction(); // Start the transaction
+
+      // Loop through holderDataBatch and insert data into the database
+      for (const holderData of holderDataBatch) {
+        const { tokenAddress, date, holderCount } = holderData;
+
+        // Insert holder data into the 'holders' table
+        await connection.query(
+          `INSERT INTO holders (tokenAddress, date, holder) VALUES (?, ?, ?)`,
+          [tokenAddress, date, holderCount]
+        );
+      }
+
+      await connection.commit(); // Commit the transaction
+      console.log("Data saved successfully.");
+    } catch (err) {
+      await connection.rollback(); // Rollback the transaction in case of error
+      console.error("Error saving data, transaction rolled back:", err);
+    } finally {
+      connection.release(); // Always release the connection back to the pool
     }
-  } catch (error) {
-    console.error("Error saving to database:", error);
-  } finally {
-    await client.end();
+  } catch (err) {
+    console.error("Error connecting to the database:", err);
   }
 };
 
-const fetchHolderData = async (contractAddress: string) => {
+const fetchHolderData = async (
+  networkName: string,
+  contractAddress: string
+) => {
   let dateIterator = new Date();
   const holderDataBatch: any[] = [];
-
+  let limit = 0;
   while (true) {
-    const holderCount = await fetchTokenHolders(contractAddress, getFormattedDate(dateIterator));
-    if (holderCount === null) {
+    const holderCount = await fetchTokenHolders(
+      networkName,
+      contractAddress,
+      getFormattedDate(dateIterator)
+    );
+    limit++;
+    if (holderCount === null || limit === 3) {
       break;
     } else {
       holderDataBatch.push({
@@ -65,12 +124,19 @@ const fetchHolderData = async (contractAddress: string) => {
 const fetchData = async () => {
   try {
     coinData = await fetchCoinData();
+    // const classifiedByNetwork = classifyByNetwork(coinData);
+    // console.log(Object.keys(classifiedByNetwork));
+    let count = 0;
     for (let i = 0; i < coinData.length; i++) {
       const platforms = coinData[i].platforms;
       const contractAddress = getContractAddress(platforms);
 
       if (contractAddress) {
-        await fetchHolderData(contractAddress);
+        const [networkName, address] = contractAddress;
+        if (networkName === "eth-mainnet") {
+          await fetchHolderData(networkName, address);
+        }
+        // console.log(networkName, address);
       } else {
         console.warn(`No contract address found for ${coinData[i].name}`);
       }

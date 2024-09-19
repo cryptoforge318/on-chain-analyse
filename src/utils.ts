@@ -1,7 +1,125 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import mysql, { Pool, PoolOptions } from "mysql2/promise";
+import { Connector, IpAddressTypes } from "@google-cloud/cloud-sql-connector";
+import { GoogleAuth } from "google-auth-library";
+import * as fs from "fs";
+import * as path from "path";
 
 dotenv.config();
+
+interface DBConfig extends PoolOptions {
+  user: string;
+  password: string;
+  database: string;
+}
+
+// Function to read credentials from a JSON file
+const getCredentialsFromFile = (filePath: string) => {
+  const fullPath = path.resolve(filePath);
+  return JSON.parse(fs.readFileSync(fullPath, "utf8"));
+};
+
+export const connectWithConnector = async (
+  config?: DBConfig,
+  credentialsFilePath: string = "adc.json"
+): Promise<Pool> => {
+  const connector = new Connector();
+  const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME;
+
+  if (!instanceConnectionName) {
+    throw new Error(
+      "INSTANCE_CONNECTION_NAME is not set in environment variables"
+    );
+  }
+
+  // Set environment variable for Google Application Credentials
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(
+    __dirname,
+    credentialsFilePath
+  );
+
+  // Authenticate with Google Cloud using the service account JSON file
+  const auth = new GoogleAuth({
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"], // Scope for Cloud SQL access
+  });
+
+  // Authenticate the client
+  await auth.getClient();
+
+  // Get the Cloud SQL connection options
+  const clientOpts = await connector.getOptions({
+    instanceConnectionName, // Your instance connection name
+    ipType: IpAddressTypes.PUBLIC, // Use Public IP for the connection
+  });
+
+  // Prepare the database configuration
+  const dbConfig: DBConfig = {
+    ...clientOpts,
+    user: process.env.DB_USER as string, // Your DB user
+    password: process.env.DB_PASS as string, // Your DB password
+    database: process.env.DB_NAME as string, // Your DB name
+  };
+
+  // Establish a connection to the database using a connection pool
+  return mysql.createPool(dbConfig);
+};
+
+export const networkName = (): { [key: string]: string } => {
+  const names: { [key: string]: string } = {
+    "binance-smart-chain": "bsc-mainnet",
+    ethereum: "eth-mainnet",
+    "polygon-pos": "matic-mainnet",
+    "optimistic-ethereum": "optimism-mainnet",
+    avalanche: "avalanche-mainnet",
+    fantom: "fantom-mainnet",
+    "arbitrum-one": "arbitrum-mainnet",
+    "arbitrum-nova": "arbitrum-nova-mainnet",
+    aurora: "aurora-mainnet",
+    base: "base-mainnet",
+    beam: "avalanche-beam-mainnet",
+    blast: "blast-mainnet",
+    boba: "boba-mainnet",
+    canto: "canto-mainnet",
+    celo: "celo-mainnet",
+    cronos: "cronos-mainnet",
+    evmos: "evmos-mainnet",
+    energi: "energi-mainnet",
+    "flare-network": "flarenetworks-flare-mainnet",
+    fraxtal: "fraxtal-mainnet",
+    "harmony-shard-0": "harmony-mainnet",
+    linea: "linea-mainnet",
+    lisk: "lisk-mainnet",
+    "manta-pacific": "manta-sepolia-testnet",
+    mantle: "mantle-mainnet",
+    "merlin-chain": "merlin-mainnet",
+    meter: "meter-mainnet",
+    "metis-andromeda": "metis-mainnet",
+    "milkomeda-cardano": "milkomeda-c1-mainnet",
+    mode: "mode-mainnet",
+    moonbeam: "moonbeam-mainnet",
+    moonriver: "moonbeam-moonriver",
+    oasis: "emerald-paratime-mainnet",
+    "oasis-sapphire": "oasis-sapphire-mainnet",
+    oasys: "oasys-mainnet",
+    opbnb: "bnb-opbnb-mainnet",
+    rollux: "rollux-mainnet",
+    rootstock: "rsk-mainnet",
+    scroll: "scroll-mainnet",
+    sei: "sei-mainnet",
+    solana: "solana-mainnet",
+    songbird: "flarenetworks-canary-mainnet",
+    "sx-network": "sx-mainnet",
+    taiko: "taiko-mainnet",
+    telos: "telos-mainnet",
+    "x-layer": "x1-mainnet",
+    zetaChain: "zetachain-mainnet",
+    zksync: "zksync-mainnet",
+    "zora-network": "zora-mainnet",
+  };
+
+  return names;
+};
 
 export const getFormattedDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -11,9 +129,13 @@ export const getFormattedDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-export async function fetchTokenHolders(tokenCA: string, date: string) {
-  console.log('Fetching for:', tokenCA, date);
-  const url = `https://api.covalenthq.com/v1/eth-mainnet/tokens/${tokenCA}/token_holders_v2/?date=${date}`;
+export async function fetchTokenHolders(
+  network: string,
+  tokenCA: string,
+  date: string
+) {
+  console.log("Fetching for:", tokenCA, date);
+  const url = `https://api.covalenthq.com/v1/${network}/tokens/${tokenCA}/token_holders_v2/?date=${date}`;
 
   try {
     const response = await axios.get(url, {
