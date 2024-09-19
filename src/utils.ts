@@ -1,6 +1,6 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import { Pool } from "pg"; // Import pg Pool
+import { Pool } from "pg";
 import { Connector, IpAddressTypes } from "@google-cloud/cloud-sql-connector";
 import { GoogleAuth } from "google-auth-library";
 import * as fs from "fs";
@@ -16,12 +16,10 @@ interface DBConfig {
   port: number;
 }
 
-export const connectWithConnector = async (
-  config?: DBConfig,
-  credentialsFilePath: string = "adc.json"
-): Promise<Pool> => {
+export const connectWithConnector = async (): Promise<Pool> => {
   const connector = new Connector();
   const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME;
+  const credentialsFilePath = "adc.json";
 
   if (!instanceConnectionName) {
     throw new Error(
@@ -37,28 +35,25 @@ export const connectWithConnector = async (
 
   // Authenticate with Google Cloud using the service account JSON file
   const auth = new GoogleAuth({
-    scopes: ["https://www.googleapis.com/auth/cloud-platform"], // Scope for Cloud SQL access
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
   });
 
   // Authenticate the client
   await auth.getClient();
 
-  // Get the Cloud SQL connection options for PostgreSQL
   const clientOpts = await connector.getOptions({
-    instanceConnectionName, // Your instance connection name
-    ipType: IpAddressTypes.PUBLIC, // Use Public IP for the connection
+    instanceConnectionName,
+    ipType: IpAddressTypes.PUBLIC,
   });
 
-  // Prepare the database configuration for PostgreSQL
   const dbConfig: DBConfig = {
-    user: process.env.DB_USER as string, // Your DB user
-    password: process.env.DB_PASS as string, // Your DB password
-    database: process.env.DB_NAME as string, // Your DB name
-    host: "34.29.242.105", // Use the host provided by the Cloud SQL connector
-    port: 5432, // PostgreSQL default port
+    user: process.env.DB_USER as string,
+    password: process.env.DB_PASS as string,
+    database: process.env.DB_NAME as string,
+    host: process.env.DB_HOST as string,
+    port: 5432,
   };
 
-  // Establish a connection to the PostgreSQL database using a connection pool
   const pool = new Pool(dbConfig);
   return pool;
 };
@@ -146,7 +141,7 @@ export async function fetchTokenHolders(
     return data;
   } catch (error) {
     console.error("Error fetching token holders:", error);
-    return null; // Handle errors gracefully and return null
+    return null;
   }
 }
 

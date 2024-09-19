@@ -8,7 +8,7 @@ import {
   networkName,
   connectWithConnector,
 } from "./utils";
-import { Client } from "pg";
+import { PoolClient } from "pg";
 
 dotenv.config();
 
@@ -25,13 +25,13 @@ interface HolderData {
   holderCount: number;
 }
 
-let coinData: Coin[] = [];
+let coinData: Coin[] = []; //All coinData fetched from CoinGecko
+let client: PoolClient | undefined; //PostgresSQL connection client
 
 const getContractAddress = (platforms: {
   [key: string]: string;
 }): [string, string] | undefined => {
   const networkMap = networkName();
-
   for (const platform in platforms) {
     if (networkMap[platform]) {
       return [networkMap[platform], platforms[platform]];
@@ -41,54 +41,45 @@ const getContractAddress = (platforms: {
   return undefined;
 };
 
-const classifyByNetwork = (data: Coin[]) => {
-  const result: { [key: string]: Coin[] } = {};
-
-  data.forEach((coin) => {
-    const platforms = coin.platforms;
-    Object.keys(platforms).forEach((network) => {
-      if (!result[network]) {
-        result[network] = [];
-      }
-      result[network].push(coin);
-    });
-  });
-
-  return result;
-};
-
-export const saveHolderDataToDB = async (holderDataBatch: HolderData[]) => {
+const connectDB = async () => {
   try {
     const pool = await connectWithConnector();
+    client = await pool.connect();
     console.log("Connected to the PostgreSQL database successfully.");
+  } catch (err) {
+    console.error("Error connecting to the PostgreSQL database:", err);
+  }
+};
 
-    const client = await pool.connect();
-    console.log("Obtained connection from pool.");
+const saveHolderDataToDB = async (holderDataBatch: HolderData[]) => {
+  if (!client) {
+    console.error("Database client is not initialized.");
+    return;
+  }
 
-    try {
-      await client.query("BEGIN"); // Start the transaction
+  try {
+    await client.query("BEGIN");
 
-      // Loop through holderDataBatch and insert data into the database
-      for (const holderData of holderDataBatch) {
-        const { tokenAddress, date, holderCount } = holderData;
-
-        // Insert holder data into the 'holders' table
+    for (const holderData of holderDataBatch) {
+      const { tokenAddress, date, holderCount } = holderData;
+      const result = await client.query(
+        `SELECT 1 FROM holders WHERE tokenAddress = $1 AND date = $2`,
+        [tokenAddress, date]
+      );
+      if (result.rows.length === 0) {
         await client.query(
-          `INSERT INTO holders (tokenAddress, date, holder) VALUES ($1, $2, $3)`,
+          `INSERT INTO holders (tokenAddress, date, holder)
+           VALUES ($1, $2, $3)`,
           [tokenAddress, date, holderCount]
         );
       }
-
-      await client.query("COMMIT"); // Commit the transaction
-      console.log("Data saved successfully.");
-    } catch (err) {
-      await client.query("ROLLBACK"); // Rollback the transaction in case of error
-      console.error("Error saving data, transaction rolled back:", err);
-    } finally {
-      client.release(); // Always release the connection back to the pool
     }
+
+    await client.query("COMMIT");
+    console.log("Data saved successfully.");
   } catch (err) {
-    console.error("Error connecting to the PostgreSQL database:", err);
+    await client.query("ROLLBACK");
+    console.error("Error saving data, transaction rolled back:", err);
   }
 };
 
@@ -98,15 +89,13 @@ const fetchHolderData = async (
 ) => {
   let dateIterator = new Date();
   const holderDataBatch: any[] = [];
-  let limit = 0;
   while (true) {
     const holderCount = await fetchTokenHolders(
       networkName,
       contractAddress,
       getFormattedDate(dateIterator)
     );
-    limit++;
-    if (holderCount === null || limit === 3) {
+    if (holderCount === null) {
       break;
     } else {
       holderDataBatch.push({
@@ -124,9 +113,6 @@ const fetchHolderData = async (
 const fetchData = async () => {
   try {
     coinData = await fetchCoinData();
-    // const classifiedByNetwork = classifyByNetwork(coinData);
-    // console.log(Object.keys(classifiedByNetwork));
-    let count = 0;
     for (let i = 0; i < coinData.length; i++) {
       const platforms = coinData[i].platforms;
       const contractAddress = getContractAddress(platforms);
@@ -146,9 +132,14 @@ const fetchData = async () => {
   }
 };
 
+const main = async () => {
+  await connectDB();
+
+  fetchData();
+};
+
 const app = express();
 const port = process.env.PORT || 3000;
-
 // Route to handle root requests
 app.get("/", (req, res) => {
   res.send("Hello, World!");
@@ -157,6 +148,5 @@ app.get("/", (req, res) => {
 // Start the server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
+  main();
 });
-
-fetchData();
