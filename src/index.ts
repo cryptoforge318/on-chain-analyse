@@ -119,10 +119,9 @@ const fetchData = async () => {
 
       if (contractAddress) {
         const [networkName, address] = contractAddress;
-        if (networkName === "eth-mainnet") {
+        if (networkName === "matic-mainnet" || networkName === "bsc-mainnet") {
           await fetchHolderData(networkName, address);
         }
-        // console.log(networkName, address);
       } else {
         console.warn(`No contract address found for ${coinData[i].name}`);
       }
