@@ -89,21 +89,25 @@ const fetchHolderData = async (
 ) => {
   let dateIterator = new Date();
   const holderDataBatch: any[] = [];
-  while (true) {
+  let shouldContinue = true;
+
+  while (shouldContinue) {
     const holderCount = await fetchTokenHolders(
       networkName,
       contractAddress,
       getFormattedDate(dateIterator)
     );
-    if (holderCount === null) {
-      break;
-    } else {
+
+    if (holderCount !== null) {
       holderDataBatch.push({
         tokenAddress: contractAddress,
         date: getFormattedDate(dateIterator),
         holderCount: holderCount,
       });
+
       dateIterator.setDate(dateIterator.getDate() - 1);
+    } else {
+      shouldContinue = false;
     }
   }
 
