@@ -99,11 +99,13 @@ const fetchHolderData = async (
     );
 
     if (holderCount !== null) {
-      holderDataBatch.push({
-        tokenAddress: contractAddress,
-        date: getFormattedDate(dateIterator),
-        holderCount: holderCount,
-      });
+      if (holderCount !== "error") {
+        holderDataBatch.push({
+          tokenAddress: contractAddress,
+          date: getFormattedDate(dateIterator),
+          holderCount: holderCount,
+        });
+      }
 
       dateIterator.setDate(dateIterator.getDate() - 1);
     } else {

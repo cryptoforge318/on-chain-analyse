@@ -96,7 +96,7 @@ export async function fetchTokenHolders(
     return data;
   } catch (error) {
     console.error("Error fetching token holders:", error);
-    return null;
+    return "error";
   }
 }
 
