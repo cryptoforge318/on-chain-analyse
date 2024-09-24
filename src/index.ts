@@ -126,7 +126,17 @@ const fetchData = async () => {
       if (contractAddress) {
         const [networkName, address] = contractAddress;
         if (networkName === "matic-mainnet" || networkName === "bsc-mainnet") {
-          await fetchHolderData(networkName, address);
+          if (!client) {
+            console.error("Database client is not initialized.");
+            return;
+          }
+          const result = await client.query(
+            `SELECT 1 FROM holders WHERE tokenAddress = $1`,
+            [address]
+          );
+          if (result.rows.length === 0) {
+            await fetchHolderData(networkName, address);
+          }
         }
       } else {
         console.warn(`No contract address found for ${coinData[i].name}`);
