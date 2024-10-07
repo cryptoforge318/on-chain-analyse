@@ -1,62 +1,10 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import { Pool } from "pg";
-import { Connector, IpAddressTypes } from "@google-cloud/cloud-sql-connector";
-import { GoogleAuth } from "google-auth-library";
 import * as fs from "fs";
 import * as path from "path";
 
 dotenv.config();
 
-interface DBConfig {
-  user: string;
-  password: string;
-  database: string;
-  host: string;
-  port: number;
-}
-
-export const connectWithConnector = async (): Promise<Pool> => {
-  const connector = new Connector();
-  const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME;
-  const credentialsFilePath = "adc.json";
-
-  if (!instanceConnectionName) {
-    throw new Error(
-      "INSTANCE_CONNECTION_NAME is not set in environment variables"
-    );
-  }
-
-  // Set environment variable for Google Application Credentials
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(
-    __dirname,
-    credentialsFilePath
-  );
-
-  // Authenticate with Google Cloud using the service account JSON file
-  const auth = new GoogleAuth({
-    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-  });
-
-  // Authenticate the client
-  await auth.getClient();
-
-  const clientOpts = await connector.getOptions({
-    instanceConnectionName,
-    ipType: IpAddressTypes.PUBLIC,
-  });
-
-  const dbConfig: DBConfig = {
-    user: process.env.DB_USER as string,
-    password: process.env.DB_PASS as string,
-    database: process.env.DB_NAME as string,
-    host: process.env.DB_HOST as string,
-    port: 5432,
-  };
-
-  const pool = new Pool(dbConfig);
-  return pool;
-};
 export const getNetworkName = (): { [key: string]: string } => {
   const names: { [key: string]: string } = {
     "arbitrum-one": "arbitrum",
@@ -153,6 +101,24 @@ export const fetchCoinData = async () => {
       }
     );
     return response.data;
+  } catch (error) {
+    console.error("Error fetching data:", error);
+    throw error;
+  }
+};
+
+export const fetchRecentCoinData = async () => {
+  try {
+    const response = await axios.get(
+      `https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?include=network`,
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+        },
+      }
+    );
+    return response.data.data;
   } catch (error) {
     console.error("Error fetching data:", error);
     throw error;
