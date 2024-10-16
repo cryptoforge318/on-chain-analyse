@@ -161,11 +161,16 @@ const main = async () => {
   // fetchRecentData();
 };
 
+const request = () => {
+  console.log("create pull request!!!");
+}
+
 const app = express();
 const port = process.env.PORT || 3333;
 // Route to handle root requests
 app.get("/", (req, res) => {
   res.send("Hello, World!");
+  request();
 });
 
 // Start the server
